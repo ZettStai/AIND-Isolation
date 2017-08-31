@@ -14,6 +14,8 @@ def custom_score(game, player):
 
     This should be the best heuristic function for your project submission.
 
+    Return score based move distance from center.
+
     Note: this function should be called from within a Player instance as
     `self.score()` -- you should not need to call this function directly.
 
@@ -32,15 +34,47 @@ def custom_score(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
+    # legal_moves=game.get_legal_moves()
+    #
+    # if not legal_moves:
+    #     return (-1, -1)
+    # _, move = max([(self.score(game.forecast_move(m), self), m) for m in legal_moves])
+    # return move
+
+    # return float(len(game.get_legal_moves()))
+
+    if game.is_loser(player):
+        return float("-inf")
+
+    if game.is_winner(player):
+        return float("inf")
+
     legal_moves=game.get_legal_moves()
 
     if not legal_moves:
         return (-1, -1)
-    _, move = max([(self.score(game.forecast_move(m), self), m) for m in legal_moves])
-    return move
 
-    return float(len(legal_moves))
+    # adv: This makes the active player more aggressive finding the most moves that limit the opponents moves
 
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+    adv = float(own_moves - (2*opp_moves))
+
+    # Gets center of the board
+    x1, y1 = game.width / 2., game.height / 2.
+
+    closest = 0
+
+    # Determine the closest dist
+    for m in legal_moves:
+        x2, y2 = m
+        dist = (x2 - x1) ** 2 + (y2 - y1) ** 2
+        if closest > dist:
+            closest = dist
+
+    # Return player adv subtract closest (multiplied for weight)
+    return float(adv - (2*closest))
+    #return float(-closest)
 
 def custom_score_2(game, player):
     """Calculate the heuristic value of a game state from the point of view
@@ -68,27 +102,46 @@ def custom_score_2(game, player):
         Furthest legal move from the opponent
     """
 
-    x1, y1 = game.get_player_location(game._player_2)
+    if game.is_loser(player):
+        return float("-inf")
+
+    if game.is_winner(player):
+        return float("inf")
 
     legal_moves = game.get_legal_moves()
 
     if not legal_moves:
         return (-1, -1)
 
+    # adv: This makes the active player more aggressive finding the most moves that limit the opponents moves
+
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+    adv = float(own_moves - (2*opp_moves))
+
+    # Determine opponent position
+    x1, y1 = game.get_player_location(game.get_opponent(player))
+
     furthest = 0
 
     for m in legal_moves:
         x2, y2 = m
-        dist = sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        dist = (x2 - x1) ** 2 + (y2 - y1) ** 2
         if furthest < dist:
             furthest = dist
 
-    return float(furthest)
+    # Return player adv subtract furthest (multiplied for weight)
+
+    return float(adv + (2*furthest))
+
+    #return float(furthest)
 
 
 def custom_score_3(game, player):
     """Calculate the heuristic value of a game state from the point of view
     of the given player.
+
+    This heuristic returns the score if the active player is closest to the opponent.
 
     Note: this function should be called from within a Player instance as
     `self.score()` -- you should not need to call this function directly.
@@ -108,8 +161,38 @@ def custom_score_3(game, player):
     float
         The heuristic value of the current game state to the specified player.
     """
-    # TODO: finish this function!
-    return float(len(game.get_legal_moves()))
+
+    if game.is_loser(player):
+        return float("-inf")
+
+    if game.is_winner(player):
+        return float("inf")
+
+    legal_moves=game.get_legal_moves()
+
+    if not legal_moves:
+        return (-1, -1)
+
+    # adv: This makes the active player more aggressive finding the most moves that limit the opponents moves
+
+    own_moves = len(game.get_legal_moves(player))
+    opp_moves = len(game.get_legal_moves(game.get_opponent(player)))
+    adv = float(own_moves - (2*opp_moves))
+
+    x1, y1 = game.get_player_location(game.get_opponent(player))
+
+    closest2opp = 0
+
+    for m in legal_moves:
+        x2, y2 = m
+        dist = (x2 - x1) ** 2 + (y2 - y1) ** 2
+        if closest2opp > dist:
+            closest2opp = dist
+
+    # Return player adv subtract furthest (multiplied for weight)
+
+    return float(adv - (2*closest2opp))
+    #return float(-closest2opp)
 
 
 class IsolationPlayer:
@@ -134,7 +217,7 @@ class IsolationPlayer:
         positive value large enough to allow the function to return before the
         timer expires.
     """
-    def __init__(self, search_depth=3, score_fn=custom_score, timeout=10.):
+    def __init__(self, search_depth=3, score_fn=custom_score, timeout=20.):
         self.search_depth = search_depth
         self.score = score_fn
         self.time_left = 180000
@@ -259,7 +342,7 @@ class MinimaxPlayer(IsolationPlayer):
             if self.time_left() < self.TIMER_THRESHOLD:
                 raise SearchTimeout()
 
-            if depth == 0:
+            if not game.get_legal_moves() or depth == 0:
                 return self.score(game,self)
 
             if terminal_test(game):
@@ -276,7 +359,7 @@ class MinimaxPlayer(IsolationPlayer):
             """
             if self.time_left() < self.TIMER_THRESHOLD:
                 raise SearchTimeout()
-            if depth == 0:
+            if not game.get_legal_moves() or depth == 0:
                 return self.score(game,self)
 
             if terminal_test(game):
@@ -286,11 +369,10 @@ class MinimaxPlayer(IsolationPlayer):
                 v = max(v, min_value(self, game.forecast_move(m), depth - 1))
             return v
 
-        # Solution using an explicit loop based on max_value()
-
-        #
-        best_move = (-1,-1)
+        # Initialize best_move as the first legal move
+        best_move = game.get_legal_moves()[0]
         best_score = float("-inf")
+
         for m in game.get_legal_moves():
             v = min_value(self, game.forecast_move(m), depth - 1)
             if v > best_score:
@@ -339,7 +421,6 @@ class AlphaBetaPlayer(IsolationPlayer):
         """
         self.time_left = time_left
 
-        # TODO: finish this function!
         # Initialize the best move so that this function returns something
         # in case the search fails due to timeout
         best_move = (-1, -1)
@@ -416,7 +497,7 @@ class AlphaBetaPlayer(IsolationPlayer):
             if self.time_left() < self.TIMER_THRESHOLD:
                 raise SearchTimeout()
 
-            if depth == 0:
+            if not game.get_legal_moves() or depth == 0:
                 return self.score(game,self)
 
             v = float("inf")
@@ -434,7 +515,7 @@ class AlphaBetaPlayer(IsolationPlayer):
             """
             if self.time_left() < self.TIMER_THRESHOLD:
                 raise SearchTimeout()
-            if depth == 0:
+            if not game.get_legal_moves() or depth == 0:
                 return self.score(game,self)
 
             v = float("-inf")
@@ -445,7 +526,10 @@ class AlphaBetaPlayer(IsolationPlayer):
                 alpha = max(alpha,v)
             return v
 
-        best_move = (-1,-1)
+        if not game.get_legal_moves() or depth == 0:
+            return (-1,-1)
+
+        best_move = game.get_legal_moves()[0]
         for m in game.get_legal_moves():
             v = ab_min_value(self, game.forecast_move(m), depth - 1, alpha, beta)
             if v > alpha:
